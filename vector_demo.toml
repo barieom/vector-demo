@@ -1,0 +1,61 @@
+#ps -fA | grep vector     
+
+[api]
+enabled =  true
+
+# Set a source; example input 
+[sources.input]
+type = "generator"
+format = "shuffle"
+interval = 1.0
+lines = [
+    "{\"transaction\": {\"id\": 1, \"type\": \"purchase\", \"credit_type\": \"visa\", \"credit_number\": \"4716844330899954\" }, \"email\": \"data@dog.com\", \"timestamp\": \"Sat Mar 20 1:42:39 EST 2021\" }", 
+    "{\"transaction\": {\"id\": 2, \"type\": \"purchase\", \"credit_type\": \"amex\", \"credit_number\": \"374778926634147\" }, \"email\": \"data@cat.com\", \"timestamp\": \"Fri Mar 19 14:12:23 EST 2021\" }",
+    "{\"transaction\": {\"id\": 1, \"type\": \"cancel\",  \"credit_type\": \"amex\", \"credit_number\": \"340215146373520\" }, \"email\": \"data@horse.com\", \"timestamp\": \"Thur Mar 18 9:02:03 EST 2021\" }",
+    "{\"transaction\": {\"id\": 1, \"type\": \"return\",  \"credit_type\": \"visa\", \"credit_number\": \"4916827749305596\" }, \"email\": \"data@pig.com\", \"timestamp\": \"Thur Mar 18 00:29:01 EST 2021\" }",
+    "{\"transaction\": {\"id\": 1, \"type\": \"return\",  \"credit_type\": \"visa\", \"credit_number\": \"4556514221626203\" }, \"email\": \"data@mouse.com\", \"timestamp\": \"Thur Mar 18 10:02:34 EST 2021\" }"
+  ]
+
+# Simple transformation - restructuring the JSON schema
+[transforms.remap_credit_card]
+type = "remap"
+inputs = ["input"]
+source = '''
+. = parse_json!(.message)
+
+.transaction.credit_card.type = del(.transaction.credit_type)
+.transaction.credit_card.number = del(.transaction.credit_number)
+
+'''
+
+# Showcase PII redaction 
+[transforms.redact_pii]
+type = "remap"
+inputs = ["remap_credit_card"]
+source = '''
+
+. = redact(., filters: [
+r'^\d{16}$',
+r'^(\w+)@(\w+).(\w+)$'
+])
+'''
+
+# Cutting cost example 
+[transforms.filter_visa]
+type = "filter"
+inputs = ["redact_pii"]
+condition = '.transaction.id != 2' 
+
+
+[sinks.out]
+type = "blackhole"
+inputs = ["in"]
+
+# Displaying the output for teaching sakes
+[sinks.stdout]
+type = "console"
+inputs = ["filter_visa"]
+target = "stdout"
+encoding = "json"
+
+
